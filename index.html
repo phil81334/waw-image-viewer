@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WaW Image Viewer</title>
+  </head>
+  <body>
+    <main id="app" hidden>
+      <div class="tab-bar">
+        <span class="tab">Images</span>
+        <span>WaW Image Viewer | 0.1.0</span>
+      </div>
+      <section class="panel viewer">
+        <div class="search-row">
+          <label class="search-label" for="search">Search</label>
+          <input
+            id="search"
+            type="search"
+            placeholder="Find an image by filename…"
+            autocomplete="off"
+          />
+          <button id="reset-filters">Clear filters</button>
+          <button id="rescan">Rescan</button>
+          <button id="cache-button">Cache…</button>
+        </div>
+        <div class="filters">
+          <label
+            >IWD archive<select id="archive">
+              <option value="">All archives</option>
+            </select></label
+          >
+          <label
+            >Dimensions<select id="dimensions">
+              <option value="">All sizes</option>
+            </select></label
+          >
+          <label
+            >Shape<select id="shape">
+              <option value="">All shapes</option>
+              <option value="square">Square</option>
+              <option value="wide">Wide</option>
+              <option value="tall">Tall</option>
+            </select></label
+          >
+          <label
+            >Type<select id="type">
+              <option value="">All types</option>
+              <option value="2d">2D image</option>
+              <option value="cube">Cubemap</option>
+            </select></label
+          >
+          <label
+            >Format<select id="format">
+              <option value="">All formats</option>
+            </select></label
+          >
+          <label
+            >Alpha<select id="alpha">
+              <option value="">Any</option>
+              <option value="yes">Available</option>
+              <option value="no">None</option>
+            </select></label
+          >
+          <label
+            >Versions<select id="duplicates">
+              <option value="">All images</option>
+              <option value="different">Different versions</option>
+              <option value="copies">Multiple copies</option>
+            </select></label
+          >
+        </div>
+        <div class="collection-heading">
+          <span id="count">Reading image index…</span
+          ><span>Thumbnails: opaque RGB</span>
+        </div>
+        <div class="workspace">
+          <section id="grid-scroll" aria-label="Image thumbnails" tabindex="0">
+            <div id="grid"></div>
+            <p id="empty-grid">Reading images from main IWD archives…</p>
+          </section>
+          <section class="preview-panel" aria-label="Selected image">
+            <p id="empty-preview">Select an image to inspect it.</p>
+            <div id="selection" hidden>
+              <div class="filename-row">
+                <strong id="filename"></strong
+                ><button id="copy-name">Copy name</button>
+              </div>
+              <label id="version-label" hidden
+                >Version<select id="version"></select
+              ></label>
+              <p id="image-info" class="hint"></p>
+              <div class="preview-tools">
+                <label for="channel">View</label>
+                <select id="channel">
+                  <option value="rgb">Opaque RGB</option>
+                  <option value="rgba">RGBA / transparency</option>
+                  <option value="r">Red</option>
+                  <option value="g">Green</option>
+                  <option value="b">Blue</option>
+                  <option value="a">Alpha</option>
+                </select>
+                <select id="face" aria-label="Cubemap face" hidden>
+                  <option value="0">+X</option>
+                  <option value="1">−X</option>
+                  <option value="2">+Y</option>
+                  <option value="3">−Y</option>
+                  <option value="4">+Z</option>
+                  <option value="5">−Z</option>
+                </select>
+                <button id="fit">Fit</button><button id="actual">1:1</button>
+              </div>
+              <div
+                id="preview-scroll"
+                class="checker"
+                tabindex="0"
+                aria-label="Image preview. Scroll to zoom, drag to pan."
+              >
+                <canvas id="canvas" hidden></canvas
+                ><span id="preview-loading">Loading…</span>
+              </div>
+              <div class="zoom-row">
+                <span id="zoom-value"></span
+                ><span>Wheel to zoom · drag to pan</span>
+              </div>
+              <details class="source-details">
+                <summary>Archive sources</summary>
+                <pre id="sources"></pre>
+              </details>
+              <div class="export-row">
+                <button id="export-iwi">Save original IWI…</button
+                ><button id="export-png">Save PNG…</button>
+              </div>
+              <p class="hint export-hint">
+                Exports keep the original channels. Cubemaps save six PNG faces.
+              </p>
+            </div>
+          </section>
+        </div>
+        <details id="warnings" hidden>
+          <summary id="warnings-title">Files not indexed</summary>
+          <pre id="warning-text"></pre>
+        </details>
+        <p id="message" role="status"></p>
+      </section>
+    </main>
+    <footer id="footer" hidden>
+      <span id="status" role="status">Ready</span>
+      <div class="footer-tools">
+        <span id="environment"></span>
+        <button
+          id="about"
+          class="icon-button"
+          type="button"
+          aria-label="About WaW Image Viewer"
+          title="About"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v6" />
+            <circle
+              cx="12"
+              cy="7.5"
+              r="0.9"
+              fill="currentColor"
+              stroke="none"
+            />
+          </svg>
+        </button>
+      </div>
+    </footer>
+    <dialog id="about-dialog" aria-labelledby="about-title">
+      <div class="dialog-title" id="about-title">About WaW Image Viewer</div>
+      <div class="dialog-body">
+        <p>An unofficial tool made for the World at War modding community.</p>
+        <p>
+          Browse the IWI images inside your game's main IWD archives. Search by
+          filename, inspect image channels and cubemap faces, copy names, or
+          save original IWIs and PNG copies.
+        </p>
+        <p>
+          This displays stored images, not in-game materials or lighting. Game
+          archives are never modified. Thumbnails are cached locally and can be
+          cleared at any time.
+        </p>
+        <p>
+          Independent of Treyarch, Activision and UGX. Built with JavaScript,
+          Vite, Rust and Tauri. Open source under GPL-3.0. Wavelet decoding is
+          adapted from OpenAssetTools; see ATTRIBUTION.md.
+        </p>
+        <p class="credit">Created by <strong>phil81334</strong>.</p>
+        <label for="repo-url">Source, instructions and releases</label>
+        <input
+          id="repo-url"
+          class="repo-url"
+          value="https://github.com/phil81334/waw-image-viewer"
+          readonly
+        />
+        <div class="dialog-actions">
+          <button id="close-about">Close</button>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="cache-dialog" aria-labelledby="cache-title">
+      <div class="dialog-title" id="cache-title">Thumbnail cache</div>
+      <div class="dialog-body">
+        <p>
+          Thumbnails and the archive index are stored here. Full-size previews
+          stay in memory. Clearing the cache does not change your game or
+          exported images.
+        </p>
+        <input
+          id="cache-path"
+          class="repo-url"
+          readonly
+          aria-label="Cache location"
+        />
+        <p class="hint">
+          Archive size and modification time are checked at startup. Rescan
+          forces a fresh read if you replace an archive while keeping those
+          values.
+        </p>
+        <div class="dialog-actions">
+          <button id="open-cache">Open folder</button
+          ><button id="clear-cache">Clear cache</button
+          ><button id="close-cache">Close</button>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="startup-error" aria-labelledby="startup-title">
+      <div class="dialog-title" id="startup-title">
+        World at War folder required
+      </div>
+      <div class="dialog-body">
+        <p id="startup-message"></p>
+        <div class="dialog-actions"><button id="quit">Close</button></div>
+      </div>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

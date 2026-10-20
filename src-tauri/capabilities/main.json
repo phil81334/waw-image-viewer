@@ -1,0 +1,11 @@
+{
+  "identifier": "main",
+  "description": "Choose where to export an image.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-save",
+    "dialog:allow-open",
+    "dialog:allow-confirm"
+  ]
+}
