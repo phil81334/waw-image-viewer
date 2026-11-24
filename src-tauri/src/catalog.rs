@@ -1,4 +1,4 @@
-//! Archive indexing, thumbnail caching and explicit exports. Game archives are read-only.
+//! Image indexing, thumbnail caching and explicit exports. Source images are read-only.
 use crate::iwi::{self, Header};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use image::{DynamicImage, ImageFormat, RgbaImage};
@@ -8,11 +8,11 @@ use std::{
     collections::BTreeMap,
     fs::{self, File},
     io::{Cursor, Read, Write},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     time::UNIX_EPOCH,
 };
 
-const CACHE_VERSION: &str = "iwi-v1";
+const INDEX_VERSION: &str = "iwi-sources-v2";
 const MAX_IWI_BYTES: u64 = 128 * 1024 * 1024;
 
 fn digest(bytes: &[u8]) -> String {
@@ -20,17 +20,18 @@ fn digest(bytes: &[u8]) -> String {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Source {
-    pub archive: String,
-    pub entry: String,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Source {
+    Archive { archive: String, entry: String },
+    Loose { entry: String },
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Entry {
     pub id: String,
     pub name: String,
-    pub hash: String,
-    pub header: Header,
+    pub hash: Option<String>,
+    pub header: Option<Header>,
     pub sources: Vec<Source>,
 }
 
@@ -61,25 +62,116 @@ fn archive_names(root: &Path) -> Result<Vec<String>, String> {
         }
     }
     names.sort();
-    if names.is_empty() {
-        return Err("No IWD archives found in the game's main folder.".into());
-    }
     Ok(names)
 }
 
-fn archive_key(root: &Path, names: &[String]) -> Result<String, String> {
-    let mut stamp = format!("{CACHE_VERSION}|{}", root.display());
-    for name in names {
-        let metadata = fs::metadata(root.join("main").join(name)).map_err(|e| e.to_string())?;
-        let modified = metadata
-            .modified()
-            .map_err(|e| e.to_string())?
-            .duration_since(UNIX_EPOCH)
-            .map_err(|e| e.to_string())?
-            .as_nanos();
-        stamp.push_str(&format!("|{name}:{}:{modified}", metadata.len()));
+fn loose_names(root: &Path, warnings: &mut Vec<String>) -> Vec<String> {
+    let directory = root.join("raw/images");
+    if !directory.is_dir() {
+        return Vec::new();
+    }
+
+    let mut names = Vec::new();
+    let mut pending = vec![(directory, String::new())];
+    while let Some((folder, prefix)) = pending.pop() {
+        let items = match fs::read_dir(&folder) {
+            Ok(items) => items,
+            Err(error) => {
+                warnings.push(format!("{}: {error}", folder.display()));
+                continue;
+            }
+        };
+
+        for item in items {
+            let result = item.and_then(|item| {
+                let name = format!("{prefix}{}", item.file_name().to_string_lossy());
+                let kind = item.file_type()?;
+                if kind.is_dir() && !kind.is_symlink() {
+                    // Windows junctions can also redirect a directory walk.
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::fs::MetadataExt;
+                        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+                        if item.metadata()?.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                            return Ok(());
+                        }
+                    }
+                    pending.push((item.path(), format!("{name}/")));
+                } else if kind.is_file() && has_extension(Path::new(&name), "iwi") {
+                    names.push(name);
+                }
+                Ok(())
+            });
+            if let Err(error) = result {
+                warnings.push(format!("{}: {error}", folder.display()));
+            }
+        }
+    }
+
+    names.sort();
+    names
+}
+
+fn has_extension(path: &Path, extension: &str) -> bool {
+    path.extension()
+        .is_some_and(|value| value.eq_ignore_ascii_case(extension))
+}
+
+fn index_key(root: &Path, archives: &[String], loose: &[String]) -> std::io::Result<String> {
+    let mut stamp = format!("{INDEX_VERSION}|{}", root.display());
+    let paths = archives
+        .iter()
+        .map(|name| root.join("main").join(name))
+        .chain(loose.iter().map(|name| root.join("raw/images").join(name)));
+    for path in paths {
+        let metadata = fs::metadata(&path)?;
+        let modified = metadata.modified()?.duration_since(UNIX_EPOCH);
+        stamp.push_str(&format!(
+            "|{}:{}:{modified:?}",
+            path.display(),
+            metadata.len()
+        ));
     }
     Ok(digest(stamp.as_bytes()))
+}
+
+fn read_bytes(reader: impl Read) -> Result<Vec<u8>, String> {
+    let mut data = Vec::new();
+    reader
+        .take(MAX_IWI_BYTES + 1)
+        .read_to_end(&mut data)
+        .map_err(|e| e.to_string())?;
+    if data.len() as u64 > MAX_IWI_BYTES {
+        return Err("Image exceeds the supported size limit.".into());
+    }
+    Ok(data)
+}
+
+fn add_entry(
+    entries: &mut BTreeMap<String, Entry>,
+    name: String,
+    source: Source,
+    hash: Option<String>,
+    header: Option<Header>,
+) {
+    let id = match &hash {
+        Some(hash) => digest(format!("{}:{hash}", name.to_lowercase()).as_bytes()),
+        None => digest(format!("unreadable-loose:{name}").as_bytes()),
+    };
+    if let Some(existing) = entries.get_mut(&id) {
+        existing.sources.push(source);
+    } else {
+        entries.insert(
+            id.clone(),
+            Entry {
+                id,
+                name,
+                hash,
+                header,
+                sources: vec![source],
+            },
+        );
+    }
 }
 
 fn write_atomic(path: &Path, bytes: &[u8], replace: bool) -> Result<(), String> {
@@ -106,35 +198,80 @@ impl Catalog {
 
     pub fn scan(&mut self, force: bool) -> Result<Index, String> {
         fs::create_dir_all(self.cache.join("thumbnails")).map_err(|e| e.to_string())?;
-        let names = archive_names(&self.root)?;
-        let key = archive_key(&self.root, &names)?;
-        let index_path = self.cache.join(format!("index-{key}.json"));
+        let mut warnings = Vec::new();
+        let loose = loose_names(&self.root, &mut warnings);
+        let archives = match archive_names(&self.root) {
+            Ok(archives) => archives,
+            Err(error) if !loose.is_empty() => {
+                if self.root.join("main").exists() {
+                    warnings.push(error);
+                }
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        };
+        if archives.is_empty() && loose.is_empty() && warnings.is_empty() {
+            return Err("No IWD archives in main or IWI files in raw/images.".into());
+        }
+
+        let index_path = if warnings.is_empty() {
+            index_key(&self.root, &archives, &loose)
+                .ok()
+                .map(|key| self.cache.join(format!("index-{key}.json")))
+        } else {
+            None
+        };
         if !force {
-            if let Ok(bytes) = fs::read(&index_path) {
-                if let Ok(mut index) = serde_json::from_slice::<Index>(&bytes) {
-                    index.cache_path = self.cache.display().to_string();
-                    self.index = index;
-                    return Ok(self.index.clone());
+            if let Some(path) = &index_path {
+                if let Ok(bytes) = fs::read(path) {
+                    if let Ok(mut index) = serde_json::from_slice::<Index>(&bytes) {
+                        index.cache_path = self.cache.display().to_string();
+                        self.index = index;
+                        return Ok(self.index.clone());
+                    }
                 }
             }
         }
-        let mut entries: BTreeMap<String, Entry> = BTreeMap::new();
-        let mut warnings = Vec::new();
-        for name in names {
-            let result = self.scan_archive(&name, &mut entries, &mut warnings);
-            if let Err(error) = result {
+
+        let mut entries = BTreeMap::new();
+        for name in archives {
+            if let Err(error) = self.scan_archive(&name, &mut entries, &mut warnings) {
                 warnings.push(format!("{name}: {error}"));
             }
         }
+
+        for name in loose {
+            let path = self.root.join("raw/images").join(&name);
+            let (hash, header) = match File::open(&path)
+                .ok()
+                .and_then(|file| read_bytes(file).ok())
+            {
+                Some(data) => (Some(digest(&data)), iwi::header(&data).ok()),
+                None => (None, None),
+            };
+            // A loose file is listed by extension even when it has no usable header.
+            add_entry(
+                &mut entries,
+                format!("images/{name}"),
+                Source::Loose { entry: name },
+                hash,
+                header,
+            );
+        }
+
         self.index = Index {
             entries: entries.into_values().collect(),
             warnings,
             cache_path: self.cache.display().to_string(),
         };
         // An incomplete scan is shown to the user, but never saved as a complete index.
-        if self.index.warnings.is_empty() {
-            let bytes = serde_json::to_vec(&self.index).map_err(|e| e.to_string())?;
-            write_atomic(&index_path, &bytes, true)?;
+        if self.index.warnings.is_empty()
+            && self.index.entries.iter().all(|entry| entry.hash.is_some())
+        {
+            if let Some(path) = index_path {
+                let bytes = serde_json::to_vec(&self.index).map_err(|e| e.to_string())?;
+                write_atomic(&path, &bytes, true)?;
+            }
         }
         Ok(self.index.clone())
     }
@@ -148,7 +285,7 @@ impl Catalog {
         let file = File::open(self.root.join("main").join(name)).map_err(|e| e.to_string())?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
         for position in 0..archive.len() {
-            let mut member = archive.by_index(position).map_err(|e| e.to_string())?;
+            let member = archive.by_index(position).map_err(|e| e.to_string())?;
             let entry_name = member.name().to_string();
             let lower = entry_name.to_lowercase();
             if !lower.starts_with("images/") || !lower.ends_with(".iwi") || member.is_dir() {
@@ -158,36 +295,20 @@ impl Catalog {
                 if member.size() > MAX_IWI_BYTES {
                     return Err("Image exceeds the supported size limit.".to_string());
                 }
-                let mut data = Vec::new();
-                member
-                    .by_ref()
-                    .take(MAX_IWI_BYTES + 1)
-                    .read_to_end(&mut data)
-                    .map_err(|e| e.to_string())?;
-                if data.len() as u64 > MAX_IWI_BYTES {
-                    return Err("Image exceeds the supported size limit.".to_string());
-                }
+                let data = read_bytes(member)?;
                 let header = iwi::header(&data)?;
                 let hash = digest(&data);
-                let id = digest(format!("{lower}:{hash}").as_bytes());
-                let source = Source {
+                let source = Source::Archive {
                     archive: name.to_string(),
                     entry: entry_name.clone(),
                 };
-                if let Some(existing) = entries.get_mut(&id) {
-                    existing.sources.push(source);
-                } else {
-                    entries.insert(
-                        id.clone(),
-                        Entry {
-                            id,
-                            name: entry_name.clone(),
-                            hash,
-                            header,
-                            sources: vec![source],
-                        },
-                    );
-                }
+                add_entry(
+                    entries,
+                    entry_name.clone(),
+                    source,
+                    Some(hash),
+                    Some(header),
+                );
                 Ok::<(), String>(())
             })();
             if let Err(error) = result {
@@ -202,45 +323,64 @@ impl Catalog {
             .entries
             .iter()
             .find(|entry| entry.id == id)
-            .ok_or_else(|| "Image is no longer in the index. Rescan the archives.".into())
+            .ok_or_else(|| {
+                "Image is no longer in the index. Click Rescan before continuing.".into()
+            })
     }
 
     pub fn read(&self, id: &str) -> Result<Vec<u8>, String> {
         let entry = self.entry(id)?;
-        let source = entry
-            .sources
-            .first()
-            .ok_or("Image has no archive source.")?;
-        // Cached metadata cannot redirect archive reads outside main.
-        if Path::new(&source.archive).components().count() != 1
-            || !source.archive.to_lowercase().ends_with(".iwd")
+        let source = entry.sources.first().ok_or("Image has no source.")?;
+        let bytes = match source {
+            Source::Archive { archive, entry } => {
+                let name = Path::new(archive);
+                if !matches!(name.components().next(), Some(Component::Normal(_)))
+                    || name.components().count() != 1
+                    || !has_extension(name, "iwd")
+                {
+                    return Err("Invalid cached archive name. Clear the cache and rescan.".into());
+                }
+                let file =
+                    File::open(self.root.join("main").join(name)).map_err(|e| e.to_string())?;
+                let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+                let member = archive.by_name(entry).map_err(|e| e.to_string())?;
+                read_bytes(member)?
+            }
+            Source::Loose { entry } => {
+                let name = Path::new(entry);
+                if !has_extension(name, "iwi")
+                    || !name
+                        .components()
+                        .all(|part| matches!(part, Component::Normal(_)))
+                {
+                    return Err("Invalid cached image path. Clear the cache and rescan.".into());
+                }
+                let file = File::open(self.root.join("raw/images").join(name))
+                    .map_err(|e| e.to_string())?;
+                read_bytes(file)?
+            }
+        };
+        if entry
+            .hash
+            .as_ref()
+            .is_some_and(|hash| digest(&bytes) != *hash)
         {
-            return Err("Invalid cached archive name. Clear the cache and rescan.".into());
-        }
-        let file =
-            File::open(self.root.join("main").join(&source.archive)).map_err(|e| e.to_string())?;
-        let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-        let member = archive.by_name(&source.entry).map_err(|e| e.to_string())?;
-        let mut bytes = Vec::new();
-        member
-            .take(MAX_IWI_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
-        if bytes.len() as u64 > MAX_IWI_BYTES || digest(&bytes) != entry.hash {
-            return Err("The archive image changed. Click Rescan before continuing.".into());
+            return Err("The source image changed. Click Rescan before continuing.".into());
         }
         Ok(bytes)
     }
 
     pub fn thumbnail(&self, id: &str) -> Result<String, String> {
         let entry = self.entry(id)?;
-        let path = self
-            .cache
-            .join("thumbnails")
-            .join(format!("{}.png", entry.hash));
-        if let Ok(bytes) = fs::read(&path) {
-            if image::load_from_memory(&bytes).is_ok() {
-                return Ok(format!("data:image/png;base64,{}", STANDARD.encode(bytes)));
+        let path = entry
+            .hash
+            .as_ref()
+            .map(|hash| self.cache.join("thumbnails").join(format!("{hash}.png")));
+        if let Some(path) = &path {
+            if let Ok(bytes) = fs::read(path) {
+                if image::load_from_memory(&bytes).is_ok() {
+                    return Ok(format!("data:image/png;base64,{}", STANDARD.encode(bytes)));
+                }
             }
         }
         let levels = iwi::decode(&self.read(id)?)?;
@@ -258,7 +398,9 @@ impl Catalog {
             .write_to(&mut encoded, ImageFormat::Png)
             .map_err(|e| e.to_string())?;
         let bytes = encoded.into_inner();
-        write_atomic(&path, &bytes, true)?;
+        if let Some(path) = path {
+            write_atomic(&path, &bytes, true)?;
+        }
         Ok(format!("data:image/png;base64,{}", STANDARD.encode(bytes)))
     }
 
@@ -279,8 +421,14 @@ impl Catalog {
         let entry = self.entry(id)?;
         match kind {
             "iwi" => Ok(vec![destination.with_extension("iwi")]),
-            "png" if entry.header.faces == 1 => Ok(vec![destination.with_extension("png")]),
             "png" => {
+                let header = entry
+                    .header
+                    .as_ref()
+                    .ok_or("PNG export requires a supported IWI header.")?;
+                if header.faces == 1 {
+                    return Ok(vec![destination.with_extension("png")]);
+                }
                 let stem = Path::new(&entry.name)
                     .file_stem()
                     .ok_or("Invalid image name.")?

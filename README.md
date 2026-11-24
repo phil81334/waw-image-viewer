@@ -1,8 +1,8 @@
 # WaW Image Viewer
 
-**An unofficial community app. Not affiliated with Treyarch, Activision or UGX.**
-
 Browse World at War's IWI images, find a filename by eye, and save original IWIs or PNG copies. Made by [phil81334](https://github.com/phil81334). Built with JavaScript, Rust, Vite and Tauri.
+
+WaW Image Viewer is not affiliated with Treyarch, Activision or any modding community.
 
 ![WaW Image Viewer](images/waw-image-viewer.png)
 
@@ -16,13 +16,13 @@ You do not need Node.js, Rust or VS Code to use the EXE. Windows needs [WebView2
 
 ## Browse images
 
-Images load from the IWD archives in `main`. Search filenames or filter by archive, dimensions, shape, image type, format, alpha availability or duplicate versions. Click a thumbnail to inspect it, wheel to zoom, or drag to pan. **Copy name** copies the filename without `images/` or `.iwi`.
+Images load from the IWD archives in `main` and from `.iwi` files in `raw/images` and its subfolders if present. Pick `raw/images` in the **Source** filter to see just that folder’s images. Loose files are listed by extension. A file the viewer cannot decode stays listed without a preview. Search filenames or filter by source, dimensions, shape, image type, format, alpha availability or duplicate versions. Click a thumbnail to inspect it, wheel to zoom, or drag to pan. **Copy name** copies the filename without `images/` or `.iwi`.
 
 Thumbnails show opaque RGB. The preview offers transparency, individual R/G/B/A channels and six cubemap faces. These are stored images, not rendered materials. Alpha can contain data rather than transparency. DXT1 supports optional one-bit alpha, so it appears under **Alpha: Available**.
 
 Identical copies of a filename are grouped; different versions remain selectable. Save an original IWI or export PNG copies. PNG exports preserve the original channels regardless of the preview mode; cubemaps export six PNGs. Existing exports require confirmation before replacement. Game archives are never changed.
 
-Thumbnails load as you browse and are cached in AppData along with the image index. **Cache…** shows the folder and lets you clear it. **Rescan** reads the archives again. The first scan takes longer.
+Thumbnails load as you browse and are cached in AppData along with the image index. **Cache…** shows the folder and lets you clear it. **Rescan** checks both sources again. The first scan takes longer.
 
 ## Run from source
 

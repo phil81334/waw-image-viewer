@@ -9,7 +9,7 @@
     <main id="app" hidden>
       <div class="tab-bar">
         <span class="tab">Images</span>
-        <span>WaW Image Viewer | 0.1.0</span>
+        <span>WaW Image Viewer | 0.2.0</span>
       </div>
       <section class="panel viewer">
         <div class="search-row">
@@ -26,8 +26,8 @@
         </div>
         <div class="filters">
           <label
-            >IWD archive<select id="archive">
-              <option value="">All archives</option>
+            >Source<select id="source">
+              <option value="">All sources</option>
             </select></label
           >
           <label
@@ -77,7 +77,7 @@
         <div class="workspace">
           <section id="grid-scroll" aria-label="Image thumbnails" tabindex="0">
             <div id="grid"></div>
-            <p id="empty-grid">Reading images from main IWD archives…</p>
+            <p id="empty-grid">Reading the image index…</p>
           </section>
           <section class="preview-panel" aria-label="Selected image">
             <p id="empty-preview">Select an image to inspect it.</p>
@@ -124,7 +124,7 @@
                 ><span>Wheel to zoom · drag to pan</span>
               </div>
               <details class="source-details">
-                <summary>Archive sources</summary>
+                <summary>Image sources</summary>
                 <pre id="sources"></pre>
               </details>
               <div class="export-row">
@@ -182,11 +182,10 @@
     <dialog id="about-dialog" aria-labelledby="about-title">
       <div class="dialog-title" id="about-title">About WaW Image Viewer</div>
       <div class="dialog-body">
-        <p>An unofficial tool made for the World at War modding community.</p>
         <p>
-          Browse the IWI images inside your game's main IWD archives. Search by
-          filename, inspect image channels and cubemap faces, copy names, or
-          save original IWIs and PNG copies.
+          Browse IWI images from the main IWD archives and raw/images when present.
+          Search by filename, inspect image channels and cubemap faces, copy names,
+          or save original IWIs and PNG copies.
         </p>
         <p>
           This displays stored images, not in-game materials or lighting. Game
@@ -194,9 +193,10 @@
           cleared at any time.
         </p>
         <p>
-          Independent of Treyarch, Activision and UGX. Built with JavaScript,
-          Vite, Rust and Tauri. Open source under GPL-3.0. Wavelet decoding is
-          adapted from OpenAssetTools; see ATTRIBUTION.md.
+          WaW Image Viewer is not affiliated with Treyarch, Activision or any
+          modding community. Built with JavaScript, Vite, Rust and Tauri. Open
+          source under GPL-3.0. Wavelet decoding is adapted from OpenAssetTools.
+          See ATTRIBUTION.md for details.
         </p>
         <p class="credit">Created by <strong>phil81334</strong>.</p>
         <label for="repo-url">Source, instructions and releases</label>
@@ -215,7 +215,7 @@
       <div class="dialog-title" id="cache-title">Thumbnail cache</div>
       <div class="dialog-body">
         <p>
-          Thumbnails and the archive index are stored here. Full-size previews
+          Thumbnails and the image index are stored here. Full-size previews
           stay in memory. Clearing the cache does not change your game or
           exported images.
         </p>
@@ -226,9 +226,8 @@
           aria-label="Cache location"
         />
         <p class="hint">
-          Archive size and modification time are checked at startup. Rescan
-          forces a fresh read if you replace an archive while keeping those
-          values.
+          Source file sizes and modification times are checked at startup.
+          Use Rescan to force a fresh read.
         </p>
         <div class="dialog-actions">
           <button id="open-cache">Open folder</button

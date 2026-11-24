@@ -21,7 +21,7 @@ const formats = {
 };
 const filters = [
   "search",
-  "archive",
+  "source",
   "dimensions",
   "shape",
   "type",
@@ -73,16 +73,27 @@ function fillSelect(id, values, label = (value) => value) {
   }
 }
 
+function sourceLabel(source) {
+  return source.kind === "loose" ? "raw/images" : source.archive;
+}
+
 function matches(entry) {
   const info = entry.header;
-  const archive = element("archive").value;
+  const sourceFilter = element("source").value;
   const dimensions = element("dimensions").value;
   const shape = element("shape").value;
   const type = element("type").value;
   const format = element("format").value;
   const alpha = element("alpha").value;
-  if (archive && !entry.sources.some((source) => source.archive === archive)) {
+  if (
+    sourceFilter &&
+    !entry.sources.some((source) => sourceLabel(source) === sourceFilter)
+  ) {
     return false;
+  }
+  // Loose IWIs with unknown metadata still match text and source filters.
+  if (!info) {
+    return !dimensions && !shape && !type && !format && !alpha;
   }
   if (dimensions && dimensions !== `${info.width}×${info.height}`) {
     return false;
@@ -187,7 +198,11 @@ function renderGrid() {
     image.alt = "";
     if (thumbnails.has(entry.id)) {
       image.src = thumbnails.get(entry.id);
-    } else if (!inFlight.has(entry.id) && !thumbnailErrors.has(entry.id)) {
+    } else if (
+      entry.header &&
+      !inFlight.has(entry.id) &&
+      !thumbnailErrors.has(entry.id)
+    ) {
       thumbnailQueue.push(entry.id);
     }
     const name = document.createElement("span");
@@ -195,9 +210,13 @@ function renderGrid() {
     name.textContent = entry.name.replace(/^images\//i, "");
     const badge = document.createElement("span");
     badge.className = "badge";
-    badge.textContent = thumbnailErrors.has(entry.id)
-      ? "Preview unavailable"
-      : `${entry.header.width} × ${entry.header.height}${group.versions.length > 1 ? ` · ${group.versions.length} versions` : ""}`;
+    const versions =
+      group.versions.length > 1 ? ` · ${group.versions.length} versions` : "";
+    if (!entry.header || thumbnailErrors.has(entry.id)) {
+      badge.textContent = `Preview unavailable${versions}`;
+    } else {
+      badge.textContent = `${entry.header.width} × ${entry.header.height}${versions}`;
+    }
     card.append(image, name, badge);
     card.addEventListener("click", () => selectGroup(group));
     cards.append(card);
@@ -259,7 +278,7 @@ function selectGroup(group) {
     option(
       element("version"),
       entry.id,
-      `${index + 1}: ${entry.sources.map((source) => source.archive).join(", ")}`,
+      `${index + 1}: ${entry.sources.map(sourceLabel).join(", ")}`,
     );
   }
   element("version-label").hidden = selectedGroup.length < 2;
@@ -271,12 +290,19 @@ function selectEntry(entry) {
   element("empty-preview").hidden = true;
   element("selection").hidden = false;
   element("filename").textContent = entry.name.replace(/^images\//i, "");
-  element("image-info").textContent =
-    `${entry.header.width} × ${entry.header.height} · ${formats[entry.header.format]} · ${entry.header.faces === 6 ? "Cubemap" : "2D image"}`;
+  const info = entry.header;
+  element("image-info").textContent = info
+    ? `${info.width} × ${info.height} · ${formats[info.format]} · ${info.faces === 6 ? "Cubemap" : "2D image"}`
+    : "Image details unavailable";
   element("sources").textContent = entry.sources
-    .map((source) => `${source.archive}\n${source.entry}`)
+    .map((source) =>
+      source.kind === "loose"
+        ? `raw/images/${source.entry}`
+        : `${source.archive}\n${source.entry}`,
+    )
     .join("\n\n");
-  element("face").hidden = entry.header.faces !== 6;
+  element("face").hidden = info?.faces !== 6;
+  element("export-png").disabled = !info;
   element("face").value = "0";
   fitMode = true;
   renderGrid();
@@ -292,6 +318,11 @@ async function loadPreview() {
   previewPixels = null;
   element("canvas").hidden = true;
   element("preview-loading").hidden = false;
+  element("zoom-value").textContent = "";
+  if (!entry.header) {
+    element("preview-loading").textContent = "Preview unavailable.";
+    return;
+  }
   element("preview-loading").textContent = "Loading…";
   try {
     const bytes = await invoke("pixels", {
@@ -349,7 +380,7 @@ function drawPreview() {
 }
 
 function applyZoom() {
-  if (!selected) {
+  if (!selected?.header) {
     return;
   }
   element("canvas").style.width = `${selected.header.width * zoom}px`;
@@ -358,7 +389,7 @@ function applyZoom() {
 }
 
 function fitPreview() {
-  if (!selected) {
+  if (!selected?.header) {
     return;
   }
   const area = element("preview-scroll");
@@ -378,8 +409,8 @@ async function scan(force = false) {
   scanBusy = true;
   element("rescan").disabled = true;
   element("clear-cache").disabled = true;
-  element("status").textContent = "Reading archives…";
-  message("Reading the IWD image index. The first scan takes longer.");
+  element("status").textContent = "Reading images…";
+  message("Reading the image index. The first scan takes longer.");
   try {
     const result = await invoke("scan", { force });
     entries = result.entries;
@@ -393,32 +424,31 @@ async function scan(force = false) {
     }
     for (const versions of groups.values()) {
       versions.sort((a, b) =>
-        a.sources[0].archive.localeCompare(b.sources[0].archive),
+        sourceLabel(a.sources[0]).localeCompare(sourceLabel(b.sources[0])),
       );
     }
     fillSelect(
-      "archive",
+      "source",
       [
         ...new Set(
           entries.flatMap((entry) =>
-            entry.sources.map((source) => source.archive),
+            entry.sources.map(sourceLabel),
           ),
         ),
       ].sort(),
     );
+    const headers = entries.map((entry) => entry.header).filter(Boolean);
     fillSelect(
       "dimensions",
       [
         ...new Set(
-          entries.map(
-            (entry) => `${entry.header.width}×${entry.header.height}`,
-          ),
+          headers.map((info) => `${info.width}×${info.height}`),
         ),
       ].sort((a, b) => parseInt(a, 10) - parseInt(b, 10) || a.localeCompare(b)),
     );
     fillSelect(
       "format",
-      [...new Set(entries.map((entry) => entry.header.format))].sort(
+      [...new Set(headers.map((info) => info.format))].sort(
         (a, b) => a - b,
       ),
       (value) => formats[value],
@@ -445,7 +475,7 @@ async function scan(force = false) {
       result.warnings.length > 0 ? "Done with warnings" : "Ready";
   } catch (error) {
     message(String(error), true);
-    element("status").textContent = "Could not read archives";
+    element("status").textContent = "Could not read images";
     element("empty-grid").textContent =
       "Could not read images. See the message below, then click Rescan to retry.";
   } finally {
@@ -467,7 +497,7 @@ async function exportImage(kind) {
     .replace(/\.iwi$/i, "");
   try {
     let destination;
-    if (kind === "png" && entry.header.faces === 6) {
+    if (kind === "png" && entry.header?.faces === 6) {
       destination = await open({
         directory: true,
         multiple: false,

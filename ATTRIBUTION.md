@@ -7,4 +7,4 @@ Created by **phil81334** for the World at War modding community.
 
 The app contains no game images. Images read or exported from your installation remain the property of their respective owners.
 
-This is an independent community app, not an official Treyarch, Activision or UGX product.
+WaW Image Viewer is not affiliated with Treyarch, Activision or any modding community.
