@@ -4,6 +4,8 @@ import { open, save, confirm } from "@tauri-apps/plugin-dialog";
 
 const element = (id) => document.getElementById(id);
 const desktop = isTauri();
+
+// IWI format numbers returned by the image index.
 const formats = {
   1: "RGBA bitmap",
   2: "RGB bitmap",
@@ -19,6 +21,7 @@ const formats = {
   12: "DXT3",
   13: "DXT5",
 };
+
 const filters = [
   "search",
   "source",
@@ -29,16 +32,22 @@ const filters = [
   "alpha",
   "duplicates",
 ];
+
+// Keep the full index, filename groups and filtered results separately.
 let entries = [];
 let groups = new Map();
 let visible = [];
+
 let selected = null;
 let selectedGroup = [];
+
 let scanBusy = false;
+
 let previewGeneration = 0;
 let previewPixels = null;
 let zoom = 1;
 let fitMode = true;
+
 let animationFrame = 0;
 
 // Only visible cards enter this queue. Memory and simultaneous IPC requests stay bounded.
@@ -85,16 +94,19 @@ function matches(entry) {
   const type = element("type").value;
   const format = element("format").value;
   const alpha = element("alpha").value;
+
   if (
     sourceFilter &&
     !entry.sources.some((source) => sourceLabel(source) === sourceFilter)
   ) {
     return false;
   }
+
   // Loose IWIs with unknown metadata still match text and source filters.
   if (!info) {
     return !dimensions && !shape && !type && !format && !alpha;
   }
+
   if (dimensions && dimensions !== `${info.width}×${info.height}`) {
     return false;
   }
@@ -110,6 +122,7 @@ function matches(entry) {
   if ((alpha === "yes" && !info.alpha) || (alpha === "no" && info.alpha)) {
     return false;
   }
+
   if (shape === "square" && info.width !== info.height) {
     return false;
   }
@@ -126,6 +139,8 @@ function applyFilters() {
   const query = element("search").value.trim().toLowerCase();
   const duplicates = element("duplicates").value;
   visible = [];
+
+  // Each filename gets one card and can have multiple versions behind it.
   for (const [name, versions] of groups) {
     if (!name.includes(query)) {
       continue;
@@ -139,11 +154,13 @@ function applyFilters() {
     ) {
       continue;
     }
+
     const matching = versions.filter(matches);
     if (matching.length > 0) {
       visible.push({ name, versions: matching });
     }
   }
+
   visible.sort((a, b) => a.name.localeCompare(b.name));
   element("count").textContent =
     `${visible.length.toLocaleString()} of ${groups.size.toLocaleString()} filenames`;
@@ -153,6 +170,7 @@ function applyFilters() {
   renderGrid();
 }
 
+// Scroll and resize events share one pending redraw per animation frame.
 function scheduleGrid() {
   if (animationFrame) {
     return;
@@ -169,12 +187,17 @@ function renderGrid() {
   const columns = Math.max(1, Math.floor(scroll.clientWidth / 166));
   const width = scroll.clientWidth / columns;
   const rowHeight = 190;
+
+  // Render an extra row above and below the viewport as the user scrolls.
   const firstRow = Math.max(0, Math.floor(scroll.scrollTop / rowHeight) - 1);
   const lastRow =
     Math.ceil((scroll.scrollTop + scroll.clientHeight) / rowHeight) + 1;
+
+  // Reserve enough height for the scrollbar to reach every row.
   grid.style.height = `${Math.ceil(visible.length / columns) * rowHeight}px`;
   const cards = document.createDocumentFragment();
   thumbnailQueue = [];
+
   for (
     let index = firstRow * columns;
     index < Math.min(visible.length, lastRow * columns);
@@ -194,6 +217,7 @@ function renderGrid() {
     card.title = entry.name;
     card.dataset.id = entry.id;
     card.setAttribute("aria-label", `Preview ${entry.name}`);
+
     const image = document.createElement("img");
     image.alt = "";
     if (thumbnails.has(entry.id)) {
@@ -205,6 +229,7 @@ function renderGrid() {
     ) {
       thumbnailQueue.push(entry.id);
     }
+
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = entry.name.replace(/^images\//i, "");
@@ -217,10 +242,12 @@ function renderGrid() {
     } else {
       badge.textContent = `${entry.header.width} × ${entry.header.height}${versions}`;
     }
+
     card.append(image, name, badge);
     card.addEventListener("click", () => selectGroup(group));
     cards.append(card);
   }
+
   grid.replaceChildren(cards);
   pumpThumbnails();
 }
@@ -236,6 +263,8 @@ function pumpThumbnails() {
     }
     inFlight.add(id);
     const generation = cacheGeneration;
+
+    // Ignore results from before the most recent rescan or cache clear.
     invoke("thumbnail", { id })
       .then((url) => {
         if (generation !== cacheGeneration) {
@@ -290,10 +319,12 @@ function selectEntry(entry) {
   element("empty-preview").hidden = true;
   element("selection").hidden = false;
   element("filename").textContent = entry.name.replace(/^images\//i, "");
+
   const info = entry.header;
   element("image-info").textContent = info
     ? `${info.width} × ${info.height} · ${formats[info.format]} · ${info.faces === 6 ? "Cubemap" : "2D image"}`
     : "Image details unavailable";
+
   element("sources").textContent = entry.sources
     .map((source) =>
       source.kind === "loose"
@@ -301,6 +332,7 @@ function selectEntry(entry) {
         : `${source.archive}\n${source.entry}`,
     )
     .join("\n\n");
+
   element("face").hidden = info?.faces !== 6;
   element("export-png").disabled = !info;
   element("face").value = "0";
@@ -313,16 +345,20 @@ async function loadPreview() {
   if (!selected || !desktop) {
     return;
   }
+
+  // Only the latest image or cubemap face request can update the canvas.
   const generation = ++previewGeneration;
   const entry = selected;
   previewPixels = null;
   element("canvas").hidden = true;
   element("preview-loading").hidden = false;
   element("zoom-value").textContent = "";
+
   if (!entry.header) {
     element("preview-loading").textContent = "Preview unavailable.";
     return;
   }
+
   element("preview-loading").textContent = "Loading…";
   try {
     const bytes = await invoke("pixels", {
@@ -332,6 +368,7 @@ async function loadPreview() {
     if (generation !== previewGeneration) {
       return;
     }
+
     previewPixels = new Uint8ClampedArray(bytes);
     if (previewPixels.length !== entry.header.width * entry.header.height * 4) {
       throw new Error("The preview returned an unexpected pixel count.");
@@ -353,9 +390,12 @@ function drawPreview() {
   const canvas = element("canvas");
   canvas.width = selected.header.width;
   canvas.height = selected.header.height;
+
+  // Draw from a copy so changing channels never alters the original pixels.
   const pixels = new Uint8ClampedArray(previewPixels);
   const channel = element("channel").value;
   const channelIndex = { r: 0, g: 1, b: 2, a: 3 }[channel];
+
   for (let offset = 0; offset < pixels.length; offset += 4) {
     if (channelIndex !== undefined) {
       const value = pixels[offset + channelIndex];
@@ -367,6 +407,7 @@ function drawPreview() {
       pixels[offset + 3] = 255;
     }
   }
+
   canvas
     .getContext("2d")
     .putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0);
@@ -414,6 +455,8 @@ async function scan(force = false) {
   try {
     const result = await invoke("scan", { force });
     entries = result.entries;
+
+    // Group versions by case-insensitive filename for browsing.
     groups = new Map();
     for (const entry of entries) {
       const name = entry.name.toLowerCase();
@@ -427,6 +470,7 @@ async function scan(force = false) {
         sourceLabel(a.sources[0]).localeCompare(sourceLabel(b.sources[0])),
       );
     }
+
     fillSelect(
       "source",
       [
@@ -453,11 +497,14 @@ async function scan(force = false) {
       ),
       (value) => formats[value],
     );
+
     element("cache-path").value = result.cache_path;
     element("warnings").hidden = result.warnings.length === 0;
     element("warnings-title").textContent =
       `${result.warnings.length} indexing warnings`;
     element("warning-text").textContent = result.warnings.join("\n");
+
+    // Drop the old selection and invalidate pending previews and thumbnails.
     selected = null;
     previewPixels = null;
     previewGeneration += 1;
@@ -466,6 +513,7 @@ async function scan(force = false) {
     cacheGeneration += 1;
     thumbnails.clear();
     thumbnailErrors.clear();
+
     applyFilters();
     message(
       `${entries.length.toLocaleString()} image versions indexed. Select a thumbnail to inspect it.`,
@@ -495,8 +543,10 @@ async function exportImage(kind) {
     .split("/")
     .pop()
     .replace(/\.iwi$/i, "");
+
   try {
     let destination;
+    // Cubemap PNG export writes six files, so it needs a folder.
     if (kind === "png" && entry.header?.faces === 6) {
       destination = await open({
         directory: true,
@@ -512,6 +562,7 @@ async function exportImage(kind) {
     if (!destination) {
       return;
     }
+
     const request = { id: entry.id, destination, kind };
     const conflicts = await invoke("export_conflicts", request);
     let replace = false;
@@ -524,6 +575,7 @@ async function exportImage(kind) {
         return;
       }
     }
+
     element("status").textContent = "Saving…";
     const saved = await invoke("export_image", { ...request, replace });
     message(`Saved: ${saved.join(" · ")}`);
@@ -534,6 +586,7 @@ async function exportImage(kind) {
   }
 }
 
+// Search, filters and thumbnail grid controls.
 for (const id of filters) {
   element(id).addEventListener(
     id === "search" ? "input" : "change",
@@ -546,6 +599,7 @@ element("reset-filters").addEventListener("click", () => {
   }
   applyFilters();
 });
+
 element("grid-scroll").addEventListener("scroll", scheduleGrid);
 new ResizeObserver(scheduleGrid).observe(element("grid-scroll"));
 new ResizeObserver(() => {
@@ -556,6 +610,8 @@ new ResizeObserver(() => {
 element("rescan").addEventListener("click", () => {
   scan(true);
 });
+
+// Image versions, cubemap faces and canvas zoom.
 element("version").addEventListener("change", () => {
   selectEntry(
     selectedGroup.find((entry) => entry.id === element("version").value),
@@ -585,6 +641,8 @@ element("preview-scroll").addEventListener(
   },
   { passive: false },
 );
+
+// Remember the starting scroll position so the preview follows the pointer.
 let drag = null;
 element("preview-scroll").addEventListener("pointerdown", (event) => {
   if (event.button !== 0) {
@@ -610,6 +668,8 @@ for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) {
     drag = null;
   });
 }
+
+// Copying and exporting the selected image.
 element("copy-name").addEventListener("click", async () => {
   if (!selected) {
     return;
@@ -630,6 +690,8 @@ element("export-iwi").addEventListener("click", () => {
 element("export-png").addEventListener("click", () => {
   exportImage("png");
 });
+
+// About dialog and repository URL selection.
 element("about").addEventListener("click", () => {
   element("about-dialog").showModal();
   element("repo-url").focus();
@@ -641,6 +703,8 @@ element("close-about").addEventListener("click", () => {
 element("repo-url").addEventListener("click", (event) => {
   event.target.select();
 });
+
+// Cache controls and thumbnail refresh.
 element("cache-button").addEventListener("click", () => {
   element("cache-dialog").showModal();
 });
@@ -677,6 +741,8 @@ element("clear-cache").addEventListener("click", async () => {
     renderGrid();
   }
 });
+
+// Keep the startup error open until the user chooses Close.
 element("startup-error").addEventListener("cancel", (event) => {
   event.preventDefault();
 });
@@ -692,6 +758,7 @@ async function start() {
     if (desktop) {
       await invoke("startup");
     }
+
     element("app").hidden = false;
     element("footer").hidden = false;
     if (desktop) {

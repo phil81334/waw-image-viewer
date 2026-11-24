@@ -1,3 +1,4 @@
+/* Shared typography and colour values. */
 :root {
   font:
     12px "Segoe UI",
@@ -11,13 +12,16 @@
   --blue: #328ad3;
 }
 
+/* Reset sizing and honour elements hidden by JavaScript. */
 * {
   box-sizing: border-box;
 }
+
 [hidden] {
   display: none !important;
 }
 
+/* App frame and tab strip. The viewer and its panes manage their own scrolling. */
 body {
   margin: 0;
   height: 100vh;
@@ -64,12 +68,14 @@ main {
   background: linear-gradient(115deg, #1d2730, #182027);
 }
 
+/* Shared controls and keyboard focus. */
 button,
 select,
 input {
   font: inherit;
   color: inherit;
 }
+
 button {
   cursor: pointer;
   background: linear-gradient(#27323d, #202a34);
@@ -83,22 +89,26 @@ button:hover {
   border-color: #6b849d;
   background: #2b3b4c;
 }
+
 button:disabled {
   cursor: default;
   color: #75808d;
   background: #202a34;
   border-color: #354454;
 }
+
 button.primary {
   background: linear-gradient(#174f85, #12365c);
   border-color: #328ad3;
   color: #e1e9f3;
 }
+
 button.primary:disabled {
   background: #253545;
   border-color: #3b4a59;
   color: #75808d;
 }
+
 button:focus-visible,
 select:focus-visible,
 input:focus-visible,
@@ -106,26 +116,32 @@ summary:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
+
+/* Secondary text and expandable details. */
 .hint {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.5;
   margin: 8px 0 16px;
 }
+
 select {
   height: 29px;
   padding: 3px 7px;
   border: 1px solid var(--border);
   background: #19222a;
 }
+
 details {
   margin-top: 16px;
   border: 1px solid #34414e;
 }
+
 summary {
   padding: 8px 10px;
   cursor: pointer;
 }
+
 pre {
   margin: 0;
   padding: 10px;
@@ -138,18 +154,23 @@ pre {
     11px/1.5 Consolas,
     monospace;
 }
+
+/* Status message colours and footer controls. */
 #message {
   min-height: 18px;
   margin: 13px 0;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+
 #message.error {
   color: #f0ac9e;
 }
+
 #message.success {
   color: #9ed5b1;
 }
+
 footer {
   display: flex;
   flex-shrink: 0;
@@ -162,11 +183,13 @@ footer {
   color: var(--muted);
   font-size: 11px;
 }
+
 .footer-tools {
   display: flex;
   align-items: center;
   gap: 12px;
 }
+
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -177,6 +200,8 @@ footer {
   background: transparent;
   font-size: 16px;
 }
+
+/* Shared styles for the About, cache and startup dialogs. */
 dialog {
   width: min(540px, 94vw);
   max-height: 90vh;
@@ -186,23 +211,29 @@ dialog {
   color: #cfdae8;
   box-shadow: 0 8px 30px #0006;
 }
+
 dialog::backdrop {
   background: #080d1280;
 }
+
 .dialog-title {
   padding: 10px 14px;
   background: #242e38;
   border-bottom: 1px solid var(--border);
 }
+
 .dialog-body {
   padding: 0 14px 14px;
 }
+
 .dialog-body p {
   line-height: 1.5;
 }
+
 .credit {
   color: var(--muted);
 }
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -212,6 +243,7 @@ dialog::backdrop {
 [hidden] {
   display: none !important;
 }
+
 .repo-url {
   width: 100%;
   height: 29px;
@@ -227,6 +259,7 @@ dialog::backdrop {
 .tab-bar {
   flex-shrink: 0;
 }
+
 .viewer {
   display: flex;
   flex-direction: column;
@@ -235,6 +268,7 @@ dialog::backdrop {
   padding: 14px;
   gap: 12px;
 }
+
 input[type="search"] {
   height: 29px;
   padding: 3px 9px;
@@ -242,6 +276,7 @@ input[type="search"] {
   border: 1px solid var(--border);
   min-width: 100px;
 }
+
 .search-row,
 .filename-row,
 .preview-tools,
@@ -252,14 +287,18 @@ input[type="search"] {
   align-items: center;
   gap: 8px;
 }
+
 .search-row input {
   flex: 1;
 }
+
+/* Let filter controls wrap when the window narrows. */
 .filters {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .filters label {
   display: flex;
   flex-direction: column;
@@ -269,16 +308,20 @@ input[type="search"] {
   font-size: 11px;
   color: var(--muted);
 }
+
 .filters select {
   width: 100%;
   color: #cfdae8;
 }
+
 .collection-heading,
 .zoom-row {
   justify-content: space-between;
   color: var(--muted);
   font-size: 11px;
 }
+
+/* Thumbnail grid and selected image panel. */
 .workspace {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(320px, 40%);
@@ -286,6 +329,7 @@ input[type="search"] {
   min-height: 180px;
   gap: 14px;
 }
+
 #grid-scroll {
   overflow: auto;
   position: relative;
@@ -293,9 +337,12 @@ input[type="search"] {
   background: #19222a;
   scrollbar-gutter: stable;
 }
+
+/* main.js sets the grid height and positions the cards for the visible rows. */
 #grid {
   position: relative;
 }
+
 .image-card {
   position: absolute;
   display: flex;
@@ -308,17 +355,20 @@ input[type="search"] {
   overflow: hidden;
   text-align: center;
 }
+
 .image-card.selected {
   border-color: var(--blue);
   background: #20394d;
   box-shadow: inset 0 0 0 1px #2772ac;
 }
+
 .image-card img {
   width: 100%;
   height: 120px;
   flex: 0 0 120px;
   object-fit: contain;
 }
+
 .image-card .name {
   width: 100%;
   overflow: hidden;
@@ -326,10 +376,13 @@ input[type="search"] {
   white-space: nowrap;
   font-size: 11px;
 }
+
 .image-card .badge {
   font-size: 10px;
   color: var(--muted);
 }
+
+/* Selected image details and preview. */
 .preview-panel {
   min-width: 0;
   overflow: auto;
@@ -337,33 +390,40 @@ input[type="search"] {
   padding: 12px;
   background: #19222a;
 }
+
 #selection {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 350px;
 }
+
 .filename-row strong {
   flex: 1;
   overflow-wrap: anywhere;
 }
+
 .filename-row button {
   flex-shrink: 0;
 }
+
 #version-label {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 10px;
 }
+
 #version {
   min-width: 0;
   flex: 1;
 }
+
 .preview-tools {
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
+
 #preview-scroll {
   overflow: auto;
   flex: 1;
@@ -372,9 +432,12 @@ input[type="search"] {
   cursor: grab;
   border: 1px solid #34414e;
 }
+
 #preview-scroll:active {
   cursor: grabbing;
 }
+
+/* Show transparency behind the preview canvas. */
 .checker {
   background-color: #394149;
   background-image: conic-gradient(
@@ -385,45 +448,57 @@ input[type="search"] {
   );
   background-size: 20px 20px;
 }
+
 #canvas {
   display: block;
   margin: auto;
   image-rendering: pixelated;
 }
+
 #preview-loading {
   display: block;
   padding: 24px;
   text-align: center;
   background: #19222ae6;
 }
+
 .zoom-row {
   margin-top: 6px;
 }
+
 .source-details {
   flex-shrink: 0;
   margin-top: 10px;
 }
+
 .source-details pre {
   max-height: 100px;
 }
+
 .export-row {
   margin-top: 12px;
   flex-wrap: wrap;
 }
+
 .export-hint {
   margin-bottom: 0;
 }
+
+/* Compact message and warning areas for the viewer. */
 #message {
   margin: 0;
   min-height: 16px;
   font-size: 11px;
 }
+
 #warnings {
   margin: 0;
 }
+
 #warnings pre {
   max-height: 100px;
 }
+
 #cache-dialog .dialog-actions {
   gap: 8px;
 }
