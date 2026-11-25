@@ -58,9 +58,9 @@ Next time, run `npm run dev`, or click the play button beside **dev** in VS Code
 | --- | --- |
 | `npm run dev` | Opens the desktop app for development. |
 | `npm run dev:web` | Shows the UI in a browser. Cannot read game images or export files. |
-| `npm run build` | Creates `release/waw-image-viewer.exe`. |
+| `npm run build` | Creates `release/vX.Y.Z/waw-image-viewer.exe`. |
 | `npm run build:web` | Builds the UI files only. No EXE. |
 
-To make your own EXE, run `npm run build`, then copy `release/waw-image-viewer.exe` beside `CoDWaW.exe`.
+The version folder matches the version in `package.json`. To make your own EXE, run `npm run build`, then copy `release/vX.Y.Z/waw-image-viewer.exe` beside `CoDWaW.exe`. If this version already has an archived EXE and release record on your machine, the build prints the path to the freshly compiled EXE in the target directory.
 
 [Credits](ATTRIBUTION.md) · [GPL-3.0 licence](LICENSE)
